@@ -126,6 +126,7 @@ async def scan(
 
                 if data["status"] == "COMPLETED":
                     print(f"[Server] Job completed in {data.get('executionTime', '?')}ms")
+                    
                     result = data["output"]
                     _save_to_gcs(raw, content_hash, subject, result)
                     return result
