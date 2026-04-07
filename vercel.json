@@ -1,0 +1,27 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/*.py",
+      "use": "@vercel/python",
+      "config": {
+        "maxLambdaSize": "250mb"
+      }
+    }
+  ],
+  "routes": [
+    { "src": "/scan", "dest": "/api/scan.py" },
+    { "src": "/status", "dest": "/api/status.py" },
+    { "src": "/health", "dest": "/api/health.py" }
+  ],
+  "functions": {
+    "api/scan.py": {
+      "maxDuration": 120,
+      "memory": 1024
+    },
+    "api/status.py": {
+      "maxDuration": 30,
+      "memory": 256
+    }
+  }
+}
