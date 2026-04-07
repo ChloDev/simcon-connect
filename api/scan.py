@@ -19,30 +19,42 @@ FFMPEG = os.path.join(BIN_DIR, "ffmpeg")
 FFPROBE = os.path.join(BIN_DIR, "ffprobe")
 
 
+MAX_SIZE_BYTES = 7 * 1024 * 1024  # 7MB
+MAX_DURATION = 30  # seconds
+
+
 def preprocess_video(input_path: str) -> str:
-    """Downscale video to 480p 30fps. Returns path to processed file."""
+    """Compress video to ≤7MB. Skip if already under limit."""
+    file_size = os.path.getsize(input_path)
+
+    # Already under 7MB — no processing needed
+    if file_size <= MAX_SIZE_BYTES:
+        return input_path
+
+    # Get duration for bitrate calculation
     probe = subprocess.run(
         [FFPROBE, "-v", "quiet", "-print_format", "json",
-         "-show_streams", "-select_streams", "v:0", input_path],
+         "-show_format", "-show_streams", "-select_streams", "v:0", input_path],
         capture_output=True, timeout=10,
     )
 
-    w = h = fps = 0
+    duration = MAX_DURATION
     if probe.returncode == 0:
-        s = json.loads(probe.stdout).get("streams", [{}])[0]
-        w, h = int(s.get("width", 0)), int(s.get("height", 0))
-        r = s.get("r_frame_rate", "30/1").split("/")
-        fps = round(int(r[0]) / max(int(r[1]), 1))
+        info = json.loads(probe.stdout)
+        duration = min(float(info.get("format", {}).get("duration", MAX_DURATION)), MAX_DURATION)
 
-    if w <= 640 and fps <= 30:
-        return input_path
+    # Target: 7MB total, minus 64kbps audio overhead
+    audio_kbps = 64
+    target_kbps = int((MAX_SIZE_BYTES * 8 / 1000) / duration) - audio_kbps
 
     out = tempfile.mktemp(suffix=".mp4")
     result = subprocess.run(
         [FFMPEG, "-y", "-i", input_path,
-         "-vf", "scale=-2:480,fps=30",
-         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
-         "-c:a", "aac", "-b:a", "64k",
+         "-t", str(MAX_DURATION),
+         "-c:v", "libx264", "-preset", "veryfast",
+         "-b:v", f"{target_kbps}k", "-maxrate", f"{target_kbps}k",
+         "-bufsize", f"{target_kbps * 2}k",
+         "-c:a", "aac", "-b:a", f"{audio_kbps}k",
          "-movflags", "+faststart", out],
         capture_output=True, timeout=120,
     )
